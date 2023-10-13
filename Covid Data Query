@@ -1,0 +1,138 @@
+select * from PortfolioProject..CovidDeaths
+
+
+select location, date, total_cases, total_deaths from PortfolioProject..CovidDeaths
+order by location, date
+
+-- Fixing columns for later usage
+Alter table PortfolioProject..CovidDeaths alter column total_deaths float
+alter table portfolioproject..coviddeaths alter column new_deaths float
+Alter table PortfolioProject..CovidDeaths alter column total_cases float 
+update Portfolioproject..CovidDeaths set new_deaths = isnull(new_deaths, '0')
+update Portfolioproject..CovidDeaths set new_cases = isnull(new_cases, '0')
+update PortfolioProject..CovidDeaths set total_deaths = isnull(total_deaths, '0')
+Update PortfolioProject..CovidDeaths
+set new_deaths = coalesce(new_deaths, 0),
+new_cases_smoothed = coalesce(new_cases_smoothed, 0)
+
+
+
+--Death % and Infection rate
+select location, date, population, total_cases, total_deaths, cast(total_deaths as float)/cast(total_cases as float)*100 as DeathRate, (total_cases/population)*100 as InfectionRate
+from PortfolioProject..CovidDeaths
+
+
+
+--Highest Infection Rate
+select location, population, max(total_cases) as NumberOfCases, max(total_cases/population)*100 as HighestInfectionRate 
+from PortfolioProject..CovidDeaths
+where continent is not null
+Group by location, population
+order by NumberOfCases desc
+
+
+--Global trend of cases
+select date, sum(new_cases) as Cases_Globally, sum(new_deaths) as Deaths_Globally 
+from PortfolioProject..CovidDeaths
+where continent is not null
+group by date
+order by date
+
+--Death Percentage globally
+select sum(new_cases) as Cases_Globally, sum(new_deaths) as Deaths_Globally, sum(new_deaths)/sum(new_cases)*100 as Global_Death_Percent 
+from PortfolioProject..CovidDeaths
+where continent is not null
+order by 1, 2
+
+
+-- Deaths per Continent
+select location, sum(new_deaths) as Deaths_Per_Continent
+from PortfolioProject..CovidDeaths
+where continent is null
+and location not in ('World', 'European Union', 'International')
+group by location
+order by Deaths_Per_Continent desc
+
+
+
+-- Joining two databases
+select * from PortfolioProject..CovidDeaths dea
+left join PortfolioProject..CovidVaccinations vac
+on dea.location = vac.location and dea.date = vac.date
+
+
+select dea.location, dea.date, dea.population, vac.new_vaccinations, sum(cast(vac.new_vaccinations as int)) over (partition by dea.location order by dea.location, dea.date) as RollingVaccinated
+from PortfolioProject..CovidDeaths dea
+left join PortfolioProject..CovidVaccinations vac
+on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null
+
+
+--% Vaccinated
+With Pop_vs_Vac (Location, date, population, new_vaccinations, RollingVaccinated) as
+
+(select dea.location, dea.date, dea.population, vac.new_vaccinations, sum(cast(vac.new_vaccinations as int)) over (partition by dea.location order by dea.location, dea.date) as RollingVaccinated
+from PortfolioProject..CovidDeaths dea
+left join PortfolioProject..CovidVaccinations vac
+on dea.location = vac.location and dea.date = vac.date
+where dea.continent is not null)
+
+select location, population, max(new_vaccinations) as PeopleVaccinated, max(RollingVaccinated/population)*100 as PercentVaccinated  
+from Pop_vs_Vac
+group by location, population
+
+
+
+-- Infection rate, death rate, etc. at the most recently recorded date
+
+select location, max(date) as CurrentDate, max(population) as CurrentPop, max(total_cases) as CurrentNumberofCases
+from PortfolioProject..CovidDeaths
+group by location
+order by location
+
+
+select location, date, population, total_cases, (total_cases/population)*100 as Infection_rate,  
+(total_deaths/population)*100 as Death_rate_Per_TotalPop, (total_deaths/total_cases)*100 as Death_rate_per_case
+from (select *, max_date = max(date) over (partition by location) from PortfolioProject..CovidDeaths) as MostRecentData
+where date = max_date
+
+--Different Method by joining
+select dea.location, dea.date, population, total_cases, (total_cases/population)*100 as Infection_rate,  
+(total_deaths/population)*100 as Death_rate_Per_TotalPop, (total_deaths/total_cases)*100 as Death_rate_per_case
+from PortfolioProject..CovidDeaths dea
+join (select location, max_date = max(date) from PortfolioProject..CovidDeaths group by location) as t2 on dea.location = t2.location and dea.date = t2.max_date
+order by location
+
+
+-- Create view
+Drop view DeathAndInfectionRate
+
+Create view DeathAndInfectionRate as
+select location, date, population, total_cases, total_deaths, cast(total_deaths as float)/cast(total_cases as float)*100 as DeathRate, (total_cases/population)*100 as InfectionRate
+from PortfolioProject..CovidDeaths
+where continent is not null
+
+select * from DeathAndInfectionRate
+order by location, date
+
+
+Create view CasesDeathsGlobally as 
+
+select date, sum(new_cases) as Cases_Globally, sum(new_deaths) as Deaths_Globally 
+from PortfolioProject..CovidDeaths
+where continent is not null
+group by date
+
+select * from CasesDeathsGlobally
+order by date
+
+
+Create view States as 
+select location, population, max(total_cases) as NumberOfCases, max(total_cases/population)*100 as HighestInfectionRate 
+from PortfolioProject..CovidDeaths
+where continent is not null
+Group by location, population
+
+
+Select * from States
+
