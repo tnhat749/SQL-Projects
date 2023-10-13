@@ -1,0 +1,125 @@
+select * from Olympics..athlete_events
+select * from olympics..noc_regions
+
+-- Total Number of Olympic Games
+select count(distinct Games) as Total_olympic_games from Olympics..athlete_events
+
+
+-- List of All Games with Season and City
+select distinct year, season, City
+from Olympics..athlete_events
+order by year
+
+-- Games listed with the number of participating countries
+select distinct games, count(distinct NOC) as Total_Countries
+from Olympics..athlete_events
+group by games
+order by Games
+
+
+-- Finding the Olympics with the highest and lowest number of participating countries
+-- 1. List the olympic games
+-- 2. Count how many countries participated in each game
+
+with List as 
+	(select distinct ae.Games, noc.region from Olympics..athlete_events ae
+	join Olympics..noc_regions noc on ae.NOC = noc.NOC),
+Participanting_countries as 
+ (select games, COUNT(region) as NumberOfCountries from list
+group by Games)
+
+select distinct concat (first_value(games) over (order by Numberofcountries), ' - ', first_value(NumberOfCountries) over (order by Numberofcountries)) as Lowest#Countries, 
+	concat(first_value(games) over (order by numberofcountries desc), ' - ', first_value(NumberOfCountries) over (order by numberofcountries desc)) as Highest#Countries
+from Participanting_countries
+
+
+
+-- Which nations have participated in all olympic games?
+
+-- Gives how many total olympics there are
+with TotalOlympics as
+	(select count(distinct games) as Total_Games
+	from Olympics..athlete_events),
+
+--Merging two tables in order to get country names from NOC Codes
+CompleteTable as 
+	(select ae.Games, ae.NOC, noc.region from olympics..athlete_events ae
+	join olympics..noc_regions noc on noc.NOC = ae.NOC),
+
+-- Finding how many olympics each country participated in
+TotalParticipation as 
+	(select distinct region, count(distinct games) as ParticipationCount
+	from CompleteTable
+	group by region)
+
+select Region as Country, ParticipationCount from TotalParticipation tp
+join Totalolympics t_o on tp.ParticipationCount = t_o.Total_Games
+
+
+-- sport which was played in all summer olympics
+
+
+-- 1. Number of summer olympics
+with TotalSummerGames as
+	(select count(distinct games) as Total_Games
+	from Olympics..athlete_events
+	where games like '%Summer%'),
+
+-- 2. List of sports with number of summer olympics participated in
+	SportsGames as
+	(select sport, count(distinct Games) as No_of_games from Olympics..athlete_events
+	where games like '%Summer%'
+	group by Sport)
+
+	select * from SportsGames SG
+	join TotalSummerGames TSG on sg.No_of_games = tsg.Total_Games
+
+
+
+
+-- Sports that have only been in the olympics once
+	With SportsGames as
+	(select sport, count(distinct Games) as No_of_games from Olympics..athlete_events
+	group by Sport),
+
+	SportsOlympics as 
+	(select distinct sport, games from Olympics..athlete_events)
+
+	select sg.sport, sg.No_of_games, so.Games from SportsGames SG
+	join SportsOlympics SO on SG.sport = so.Sport
+	where No_of_games = 1
+
+
+-- Number of sports in each Olympic
+select distinct games, count(distinct Sport) as Number_of_sports from Olympics..athlete_events
+	group by Games
+	order by Number_of_sports desc
+
+-- Oldest winners of gold medals
+with Oldestage as 
+	(select max(age) as OldA from Olympics..athlete_events
+	where medal = 'Gold') 
+
+select name, sex, age, team, games, city, sport, event, medal from Olympics..athlete_events AE
+	join oldestage OA on OA.oldA = AE.age
+	where medal = 'Gold' 
+
+
+-- Total Male to Female ratio of all olymic events
+with Males as
+	(select count(sex) as MalesNumber from Olympics..athlete_events
+	where Sex = 'M'), 
+Females as
+	(select count(sex) as FemalesNumber from Olympics..athlete_events
+	where Sex = 'F')
+
+
+select CONCAT(
+	1,
+	' : ', 
+	round(cast((first_value(malesnumber) over (order by malesnumber)) as decimal(8,2)) /
+	(select cast(first_value(femalesNumber) over (order by femalesnumber) as decimal(7,2)) from females), 3,1)) as Ratio
+	
+	from Males
+	
+
